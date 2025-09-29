@@ -45,6 +45,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
+          tags: |
+            type=ref
+            type=sha
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       # https://github.com/docker/build-push-action
