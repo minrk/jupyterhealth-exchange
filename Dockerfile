@@ -2,23 +2,23 @@ ARG PYTHON_VERSION=3.12-slim-bullseye
 
 FROM python:${PYTHON_VERSION}
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-# install psycopg2 dependencies.
-RUN apt-get update && apt-get install -y \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 RUN mkdir -p /code
 RUN mkdir -p /data
 
 WORKDIR /code
 
-RUN pip install pipenv
 COPY Pipfile Pipfile.lock /code/
-RUN pipenv install --deploy --system
+ARG XDG_CACHE_DIR=/tmp/cache
+RUN --mount=type=cache,target=${XDG_CACHE_DIR} \
+    export PIP_CACHE_DIR=$XDG_CACHE_DIR/pip \
+ && export PIPENV_CACHE_DIR=$XDG_CACHE_DIR/pipenv \
+ && pip install pipenv \
+ && pipenv install --deploy --system \
+ && pip uninstall -y pipenv
+
 COPY . /code
 RUN python manage.py collectstatic --no-input
 

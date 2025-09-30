@@ -6,7 +6,7 @@ name = "pypi"
 [packages]
 django = "==5.2"
 python-dotenv = "*"
-psycopg2 = "*"
+psycopg2-binary = "*"
 django-oauth-toolkit = "*"
 six = "*"
 requests = "*"
@@ -26,7 +26,6 @@ drf-spectacular = "*"
 grafana-django-saml2-auth = "*"
 pre-commit = "*"
 jsonschema = "*"
-
 
 [dev-packages]
 
