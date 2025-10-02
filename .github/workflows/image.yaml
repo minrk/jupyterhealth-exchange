@@ -4,17 +4,25 @@ on:
   push:
     branches:
       - main
-      - ghcr
     tags:
       - '*'
     workflow_dispatch:
 
 env:
+  # only publish from this repo, not forks
+  PUBLISHING_REPO: jupyterhealth/jupyterhealth-exchange
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-image:
+    services:
+      # So that we can test this in PRs/branches
+      local-registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -25,15 +33,60 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Should we push this image to a public registry?
+        shell: python
+        run: |
+          import os
+          repo = "${{ github.repository }}"
+          event = "${{ github.event_name }}"
+          ref = "${{ github.event.ref }}"
+          publishing = ""
+          if (
+              repo == "${{ env.PUBLISHING_REPO }}"
+              and event == "push"
+              and (
+                  ref.startswith("refs/tags/")
+                  or ref == "refs/heads/main"
+              )
+          ):
+              publishing = "true"
+          else:
+                   run: |
+          import os
+          repo = "${{ github.repository }}"
+          event = "${{ github.event_name }}"
+          ref = "${{ github.event.ref }}"
+          publishing = ""
+          if (
+              repo == "${{ env.PUBLISHING_REPO }}"
+              and event == "push"
+              and (
+                  ref.startswith("refs/tags/")
+                  or ref == "refs/heads/main"
+              )
+          ):
+              print("Publishing image")
+          else:
+              # PR or fork, don't push
+              with open(os.environ["GITHUB_ENV"], "a") as f:
+                  f.write(f"REGISTRY=localhost:5000/\n")
+
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-      # docker/setup-buildx-action
+      # https://github.com/docker/setup-buildx-action
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # Allows pushing to registry on localhost:5000
+          driver-opts: network=host
 
       # use hash pinning on actions that get access to secrets.GITHUB_TOKEN
       - name: Log in to the Container registry
+        if: env.REGISTRY == 'gchr.io'
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
           registry: ${{ env.REGISTRY }}
