@@ -232,15 +232,6 @@ flowchart TD
   `$ python manage.py iglu`
 - This creates a new study under the "Berkeley Institute for Data Science (BIDS)" Organization with 19 mock patients and 1745 real Observation data points
 
-### Practitioner script; uploads observations for patients where the practitioner has the appropriate access
-
-- The script is a Django management command named **practitioner_fhir_obs**
-- update the `email` and `password` variables with an existing **'signed-up' JHE practitioner user** in the script.
-- update the `organization_name` variable with a valid **existing organization**.
-- update the `study_name` variable with a valid **existing study** which has the **iHealth** data source with the **blood glucose** scope.
-- After adding these values, execute the **command** `$ python manage.py practitioner_fhir_obs`.
-
-
 
 ## Working with APIs
 
@@ -602,6 +593,94 @@ DEBUG = True
     },
     ...
 ```
+
+---
+
+### Practitioner Script: Upload Observations for Authorized Patients
+
+#### Prerequisites
+
+* The database must already be seeded
+* The Django server must be running, i.e., https://jhe.fly.dev or http://localhost:<port>
+* The target Practitioner, Organization, and Study records already exist
+
+---
+
+## Test Procedure
+
+1. **Select Parent Organization**
+   Choose **University of California, Berkeley**.
+
+2. **Open Sub-Organization**
+   Click **View** for **Berkeley Institute for Data Science (BIDS)**.
+
+3. **Create a New Study**
+
+   * Under BIDS, create a study.
+   * Add the **iHealth** data source.
+   * Set the data scope to **blood glucose**.
+
+4. **Record the Study ID**
+   Open the newly created study and copy its **Study ID** (e.g. `30006`).
+
+5. **Run the Practitioner Upload Script**
+   Replace `<study_id>` with the ID from step 4:
+
+   ```bash
+   python jhe/resources/practitioner_fhir_obs_upload.py \
+     --email mary@example.com \
+     --study-id <study_id>
+   ```
+
+---
+
+## Usage
+
+```bash
+python jhe/resources/practitioner_fhir_obs_upload.py \
+  [--email <practitioner_email>] \
+  [--password <practitioner_password>] \
+  [--org-id <organization_id>] \
+  [--study-id <study_id>] \
+  [--patient-email <patient_email>]
+```
+
+---
+
+## Arguments & Defaults
+
+| Flag              | Description                                                  | Default                       |
+| ----------------- | ------------------------------------------------------------ | ----------------------------- |
+| `--email`         | Practitioner login email                                     | `obs-upload@example.com`      |
+| `--password`      | Practitioner password                                        | `Jhe1234!`                    |
+| `--org-id`        | Target organization ID                                       | `20003`                       |
+| `--study-id`      | Target study ID (uses iHealth data source + blood-glucose scope) | `30006`                       |
+| `--patient-email` | Patient email (lookup / create / enroll)                     | `obs-upload-pat1@example.com` |
+
+If omitted, the defaults will be used. You may override any or all flags.
+
+---
+
+## Examples
+
+**With all defaults:**
+
+```bash
+python practitioner_fhir_obs_upload.py
+```
+
+**Specifying all arguments:**
+
+```bash
+python practitioner_fhir_obs_upload.py \
+  --email practitioner@example.com \
+  --password "Sup3r$ecret!" \
+  --org-id 42 \
+  --study-id 99 \
+  --patient-email patient2@example.com
+```
+
+---
 
 ## Running in Production
 
