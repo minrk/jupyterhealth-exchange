@@ -23,9 +23,9 @@ jobs:
       - name: Install dependencies
         run: |
           npm ci
-        working_directory: core/static
+        working-directory: core/static
 
       - name: Run tests
         run: |
           npm test
-        working_directory: core/static
+        working-directory: core/static
