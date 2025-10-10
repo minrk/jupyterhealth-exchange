@@ -12,8 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Create .env in jhe
-        working-directory: ./jhe
+      - name: Create .env
         run: |
           cat <<EOF > .env
           SITE_TITLE=${{ secrets.SITE_TITLE }}
@@ -34,5 +33,4 @@ jobs:
           PATIENT_AUTHORIZATION_CODE_VERIFIER=${{ secrets.PATIENT_AUTHORIZATION_CODE_VERIFIER }}
           EOF
       - name: Deploy
-        working-directory: ./jhe
         run: flyctl deploy -a jhe --remote-only --dockerfile ./Dockerfile

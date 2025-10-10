@@ -22,7 +22,7 @@ https://github.com/orgs/the-commons-project/projects/8
 
 > [!TIP]
 > **If you are a user (Practitioner or Patient), please take note of the following access information for the [JupyterHealth Website](https://jhe.fly.dev):**
-> - JHE Default Invite Code is ```helloworld``` (see [here](https://github.com/the-commons-project/jupyterhealth-exchange/blob/main/jhe/dot_env_example.txt#L3))
+> - JHE Default Invite Code is ```helloworld``` (see [here](https://github.com/the-commons-project/jupyterhealth-exchange/blob/main/dot_env_example.txt#L3))
 > - JHE Default Super User ```sam@example.com/Jhe1234!``` can create and edit top level organizations. Any user can create sub-organizations.
 
 > [!TIP]
@@ -33,11 +33,11 @@ https://github.com/orgs/the-commons-project/projects/8
 
 
 
-1. Set up your Python environment and install dependencies from `jhe/Pipfile` - this project uses Django **version 5.2** which requires python  **3.10, 3.11, 3.12 or 3.13**
+1. Set up your Python environment and install dependencies from `Pipfile` - this project uses Django **version 5.2** which requires python  **3.10, 3.11, 3.12 or 3.13**
 
     - NB: If using pipenv it is recommended to run `pipenv sync` against the lock file to match package versions
 1. Create a new Postgres DB (currently only Postgres is supported because of json functions)
-1. Copy `jhe/dot_env_example.txt` to `jhe/.env` and update the `DB_*` parameters to match (2)
+1. Copy `dot_env_example.txt` to `.env` and update the `DB_*` parameters to match (2)
 1. Ensure the `.env` is loaded into your Python environment, eg for pipenv run `$ pipenv shell`
 1. Run the Django migration `$ python manage.py migrate` to create the database tables.
 1. Seed the database by running the Django management command `$ python manage.py seed`
@@ -300,7 +300,7 @@ IDENTITY_PROVIDER_METADATA_URL=https://mocksaml.com/api/saml/metadata
 
 ###### Temporarily Switch on Debug for logging
 
-Add the below to `./jhe/settings.py`
+Add the below to `./settings.py`
 
 
 ```python
@@ -627,7 +627,7 @@ DEBUG = True
    Replace `<study_id>` with the ID from step 4:
 
    ```bash
-   python jhe/resources/practitioner_fhir_obs_upload.py \
+   python resources/practitioner_fhir_obs_upload.py \
      --email mary@example.com \
      --study-id <study_id>
    ```
@@ -637,7 +637,7 @@ DEBUG = True
 ## Usage
 
 ```bash
-python jhe/resources/practitioner_fhir_obs_upload.py \
+python resources/practitioner_fhir_obs_upload.py \
   [--email <practitioner_email>] \
   [--password <practitioner_password>] \
   [--org-id <organization_id>] \
@@ -1012,7 +1012,7 @@ For deployment options and a comprehensive guide take a look at the official [Dj
 An example Dockerfile is included to deploy the app using [gunicorn](https://gunicorn.org/) and [WhiteNoise](https://whitenoise.readthedocs.io/en/stable/django.html) for static files.
 
 1. Create a new empty Postgres database
-1. Copy `jhe/dot_env_example.txt` to `jhe/.env` and update the `DB_*` parameters from (1)
+1. Copy `dot_env_example.txt` to `.env` and update the `DB_*` parameters from (1)
 1. Migrate the DB by running `python manage.py migrate`
 1. Seed the database by running the Django management command `python manage.py seed_db`
 1. From the `jhe` directory, build the image `$ docker build .`
