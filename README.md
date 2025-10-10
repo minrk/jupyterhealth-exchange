@@ -38,6 +38,7 @@ https://github.com/orgs/the-commons-project/projects/8
     - NB: If using pipenv it is recommended to run `pipenv sync` against the lock file to match package versions
 1. Create a new Postgres DB (currently only Postgres is supported because of json functions)
 1. Copy `dot_env_example.txt` to `.env` and update the `DB_*` parameters to match (2)
+   and generate a new value for `SECRET_KEY`, e.g. with `openssl rand -base64 32`.
 1. Ensure the `.env` is loaded into your Python environment, eg for pipenv run `$ pipenv shell`
 1. Run the Django migration `$ python manage.py migrate` to create the database tables.
 1. Seed the database by running the Django management command `$ python manage.py seed`
@@ -1013,6 +1014,7 @@ An example Dockerfile is included to deploy the app using [gunicorn](https://gun
 
 1. Create a new empty Postgres database
 1. Copy `dot_env_example.txt` to `.env` and update the `DB_*` parameters from (1)
+   and generate a new value for `SECRET_KEY`, e.g. with `openssl rand -base64 32`.
 1. Migrate the DB by running `python manage.py migrate`
 1. Seed the database by running the Django management command `python manage.py seed_db`
 1. From the `jhe` directory, build the image `$ docker build .`
