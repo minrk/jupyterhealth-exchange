@@ -18,14 +18,14 @@ jobs:
         with:
           node-version: "18"
           cache: "npm"
-          cache-dependency-path: jhe/core/static/package-lock.json
+          cache-dependency-path: core/static/package-lock.json
 
       - name: Install dependencies
         run: |
-          cd jhe/core/static
           npm ci
+        working-directory: core/static
 
       - name: Run tests
         run: |
-          cd jhe/core/static
           npm test
+        working-directory: core/static
