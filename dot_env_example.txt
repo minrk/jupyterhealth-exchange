@@ -17,7 +17,10 @@ DB_HOST="localhost"
 # Use host.docker.internal if connecting to localhost from Docker
 DB_PORT=5432
 
-CH_INVITATION_LINK_PREFIX="https://play.google.com/store/apps/details?id=org.thecommonsproject.android.phr.dev&referrer=cloud_sharing_code="
+# <hostname>|<authorization_code> is appended to this URL, eg ?cloud_sharing=example.com%7Cxxxyyyzzz111222333
+CH_INVITATION_LINK_PREFIX="https://appdev.tcpdev.org/m/phr/main?cloud_sharing="
+
+# Some data sources are fixed to a single host, uncomment this line to exclude example.com%7C from example above
 # CH_INVITATION_LINK_EXCLUDE_HOST=True
 
 PATIENT_AUTHORIZATION_CODE_CHALLENGE="cSqbllwI7dRJ5McJ-ADEWx6gSDw-DhG1jvjnr2511l4~"
