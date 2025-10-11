@@ -127,19 +127,20 @@ By setting these variables explicitly, you prevent incorrect path injections and
 9. Upload Observations using the FHIR API and access token
 10. View the Observations from the web UI
 
-## Roles Based Access Control
+## Role Based Access Control
 
 Whether or not a Practitioner user can view particular Patients, Studies and Observations depends on membership of the Organization that the Patients/Studies/Observations belong to.
 
 Whether or not a Practitioner user can edit the Data Sources, Organization, Organization's Patients or Studies depends on the role they are assigned to for that Organization at the time of being added. When a user create a new Organization they are automatically added as a  Manager of the Organization. Permissions for roles are outlined in the table below.
 
-| Permission        | Super User | Manager | Member | Viewer |
-| ----------------- | ---------- | ------- | ------ | ------ |
-| Edit Data Sources | [x]        | [ ]     | [ ]    | [ ]    |
-| Edit Organization | [x]        | [x]     | [ ]    | [ ]    |
-| Edit Patients     | [x]        | [x]     | [x]    | [ ]    |
-| Edit Studies      | [x]        | [x]     | [x]    | [ ]    |
-| View All          | [x]        | [x]     | [x]    | [x]    |
+| Permission                   | Super User         | Manager            | Member             | Viewer             |
+| ---------------------------- | ------------------ | ------------------ | ------------------ | ------------------ |
+| Edit Data Sources            | :white_check_mark: |                    |                    |                    |
+| Edit Top Level Organizations | :white_check_mark: |                    |                    |                    |
+| Edit Organization            | :white_check_mark: | :white_check_mark: |                    |                    |
+| Edit Patients                | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    |
+| Edit Studies                 | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    |
+| View All                     | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 
 ## Open mHealth Schemas
 
