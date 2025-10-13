@@ -10,6 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
+from urllib.parse import quote
 
 from core.admin_pagination import AdminListMixin
 from core.fhir_pagination import FHIRBundlePagination
@@ -136,7 +137,7 @@ class PatientViewSet(AdminListMixin, ModelViewSet):
         grant = patient.jhe_user.create_authorization_code(1, settings.OIDC_CLIENT_REDIRECT_URI)
         url = settings.CH_INVITATION_LINK_PREFIX
         if not settings.CH_INVITATION_LINK_EXCLUDE_HOST:
-            url = url + settings.SITE_URL.split("/")[2] + "|"
+            url = url + quote(settings.SITE_URL.split("/")[2] + "|", safe="")
         invitation_link = url + grant.code
         if send_email:
             message = render_to_string(

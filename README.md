@@ -38,6 +38,7 @@ https://github.com/orgs/the-commons-project/projects/8
     - NB: If using pipenv it is recommended to run `pipenv sync` against the lock file to match package versions
 1. Create a new Postgres DB (currently only Postgres is supported because of json functions)
 1. Copy `dot_env_example.txt` to `.env` and update the `DB_*` parameters to match (2)
+   and generate a new value for `SECRET_KEY`, e.g. with `openssl rand -base64 32`.
 1. Ensure the `.env` is loaded into your Python environment, eg for pipenv run `$ pipenv shell`
 1. Run the Django migration `$ python manage.py migrate` to create the database tables.
 1. Seed the database by running the Django management command `$ python manage.py seed`
@@ -126,19 +127,20 @@ By setting these variables explicitly, you prevent incorrect path injections and
 9. Upload Observations using the FHIR API and access token
 10. View the Observations from the web UI
 
-## Roles Based Access Control
+## Role Based Access Control
 
 Whether or not a Practitioner user can view particular Patients, Studies and Observations depends on membership of the Organization that the Patients/Studies/Observations belong to.
 
 Whether or not a Practitioner user can edit the Data Sources, Organization, Organization's Patients or Studies depends on the role they are assigned to for that Organization at the time of being added. When a user create a new Organization they are automatically added as a  Manager of the Organization. Permissions for roles are outlined in the table below.
 
-| Permission        | Super User | Manager | Member | Viewer |
-| ----------------- | ---------- | ------- | ------ | ------ |
-| Edit Data Sources | [x]        | [ ]     | [ ]    | [ ]    |
-| Edit Organization | [x]        | [x]     | [ ]    | [ ]    |
-| Edit Patients     | [x]        | [x]     | [x]    | [ ]    |
-| Edit Studies      | [x]        | [x]     | [x]    | [ ]    |
-| View All          | [x]        | [x]     | [x]    | [x]    |
+| Permission                   | Super User         | Manager            | Member             | Viewer             |
+| ---------------------------- | ------------------ | ------------------ | ------------------ | ------------------ |
+| Edit Data Sources            | :white_check_mark: |                    |                    |                    |
+| Edit Top Level Organizations | :white_check_mark: |                    |                    |                    |
+| Edit Organization            | :white_check_mark: | :white_check_mark: |                    |                    |
+| Edit Patients                | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    |
+| Edit Studies                 | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    |
+| View All                     | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 
 ## Open mHealth Schemas
 
@@ -1007,13 +1009,22 @@ erDiagram
 
 For deployment options and a comprehensive guide take a look at the official [Django Deployment docs](https://docs.djangoproject.com/en/5.1/howto/deployment/)
 
-### Deploying with the included Dockerfile
+### Deploying with the published container image
 
 An example Dockerfile is included to deploy the app using [gunicorn](https://gunicorn.org/) and [WhiteNoise](https://whitenoise.readthedocs.io/en/stable/django.html) for static files.
+This image is published to `ghcr.io/jupyterhealth/jupyterhealth-exchange`.
 
 1. Create a new empty Postgres database
 1. Copy `dot_env_example.txt` to `.env` and update the `DB_*` parameters from (1)
+   and generate a new value for `SECRET_KEY`, e.g. with `openssl rand -base64 32`.
+1. start a container with the image, mounting your `.env` file, with
+   ```
+   TAG=sha-abc1234
+   docker run --rm -it -v$PWD/.env:/code/.env ghcr.io/jupyterhealth/jupyterhealth-exchange:$TAG bash
+   ```
 1. Migrate the DB by running `python manage.py migrate`
 1. Seed the database by running the Django management command `python manage.py seed_db`
-1. From the `jhe` directory, build the image `$ docker build .`
-1. Run the image `$ docker run -p 8000:8000 <image_id>`
+1. exit your setup container and launch a new container running the JupyterHealth Exchange
+   ```
+   docker run -v$PWD/.env:/code/.env -p8000:8000 ghcr.io/jupyterhealth/jupyterhealth-exchange:$TAG
+   ```
