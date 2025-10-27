@@ -25,9 +25,7 @@ from fhir.resources.observation import Observation as FHIRObservation
 from fhir.resources.patient import Patient as FHIRPatient
 from jsonschema import ValidationError
 from core.utils import validate_with_registry
-from oauth2_provider.models import (
-    AccessToken, RefreshToken, Grant, IDToken, get_application_model, get_grant_model
-)
+from oauth2_provider.models import AccessToken, RefreshToken, Grant, IDToken, get_application_model, get_grant_model
 
 from .tokens import account_activation_token
 
@@ -120,7 +118,7 @@ class JheUser(AbstractUser):
         if deleted:
             return deleted
         raise ObjectDoesNotExist(f"JheUser with id={self.id} did not exist")
-    
+
     def save(self, *args, **kwargs):
         is_new = (
             self._state.adding
@@ -156,9 +154,7 @@ class JheUser(AbstractUser):
                         # Expected format: "<org_id>:<role>;<org_id>:<role>"
                         parts = [p.strip() for p in mapping_str.split(";") if p.strip()]
                         if not parts:
-                            raise DjangoValidationError(
-                                "PRACTITIONER_DEFAULT_ORGS must be non-empty when set."
-                            )
+                            raise DjangoValidationError("PRACTITIONER_DEFAULT_ORGS must be non-empty when set.")
 
                         valid_roles = {c[0] for c in PractitionerOrganization.ROLE_CHOICES}
                         requested: list[tuple[int, str]] = []
