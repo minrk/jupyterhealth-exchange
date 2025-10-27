@@ -216,20 +216,12 @@ function navReload() {
 
 
 function navReloadModal() {
-  const { route, params } = getCurrentRouteAndParams();
-
-  // If a modal is showing, hide it BEFORE re-render
-  if (crudModal?._isShown) crudModal.hide();
-
-  // Re-render the route (this replaces DOM)
-  nav(route, params).then(() => {
-    // Re-bind modal reference to the NEW node
-    const crudModalElement = document.getElementById(`${route}-crudModal`);
-    if (crudModalElement) {
-      crudModal = new bootstrap.Modal(crudModalElement, {});
-      crudModal.show();
-    }
-  });
+  const currentRouteAndParams = getCurrentRouteAndParams();
+  // just re-fetch current route content without hiding modal
+  crudModal.hide();
+  crudModal.show();
+  const params = currentRouteAndParams.params;
+  nav(currentRouteAndParams.route, params);
 }
 
 
@@ -238,14 +230,15 @@ window.addEventListener("popstate", function (event) {
   if (!signingOut) navReload(); // see signOut() for explanation
 });
 
-function navReturnFromCrud() {
+async function navReturnFromCrud()  {
   const currentRouteAndParams = getCurrentRouteAndParams();
   const params = currentRouteAndParams.params;
   delete params.create;
   delete params.read;
   delete params.update;
   delete params.delete;
-  crudModal.hide();
+  crudModal.hide(); // This returns immediately but kicks of an async process
+  await new Promise(resolve => setTimeout(resolve, 600)); // wait for modal to hide (300 ms)
   nav(currentRouteAndParams.route, params);
 }
 
@@ -601,7 +594,7 @@ async function createOrganization(partOf) {
     "organizations",
     organizationRecord
   );
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 async function updateOrganization(id) {
@@ -618,12 +611,12 @@ async function updateOrganization(id) {
     `organizations/${id}`,
     organizationRecord
   );
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 async function deleteOrganization(id) {
   const response = await apiRequest("DELETE", `organizations/${id}`);
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
     async function addUserToOrganization(userEmail, organizationId, role) {
@@ -662,11 +655,6 @@ async function removeUserFromOrganization(userId, organizationId) {
 // ==================================================
 // Patients
 // ==================================================
-
-function getCurrentParams() {
-  const currentRouteAndParams = getCurrentRouteAndParams();
-  return currentRouteAndParams.params;
-}
 
 async function renderPatients(queryParams) {
   console.log(`queryParams: ${JSON.stringify(queryParams)}`);
@@ -773,27 +761,6 @@ async function renderPatients(queryParams) {
     "patient.manage_for_organization"
   );
 
-  window.currentPatientRecord = patientRecord || {};
-  window.MODAL_SHOWN_HANDLERS = window.MODAL_SHOWN_HANDLERS || {};
-  window.MODAL_SHOWN_HANDLERS.patients = (root) => {
-    if (root.dataset.inited) return;
-    root.dataset.inited = '1';
-
-    const data = window.currentPatientRecord || {};
-    const set = (id, v) => {
-      const el = root.querySelector('#' + id);
-      if (el) el.value = v ?? '';
-    };
-
-    set('patientIdentifier',  data.identifier);
-    set('patientFamilyName',  data.nameFamily);
-    set('patientGivenName',   data.nameGiven);
-    set('patientBirthDate',   data.birthDate);
-    set('patientTelecomEmail',data.telecomEmail);
-    set('patientTelecomPhone',data.telecomPhone);
-  };
-
-
   const renderParams = {
     ...queryParams,
     patients: patientsPaginated?.results,
@@ -828,7 +795,7 @@ async function globalLookupPatientByEmail(email, organizationId) {
     if(matchingOrganization){
       return alert(`Patient with E-mail ${email} is already a member of ${matchingOrganization.name}`);
     }
-    navReturnFromCrud();
+    await navReturnFromCrud() ;
     await nav("patients", {
       update: true,
       id: patientRecord[0].id,
@@ -836,7 +803,7 @@ async function globalLookupPatientByEmail(email, organizationId) {
       addOrganizationId: true,
     });
   } else {
-    navReturnFromCrud();
+    await navReturnFromCrud() ;
     await nav("patients", { create: true, organizationId: organizationId, lookedUpEmail: email });
   }
 }
@@ -853,7 +820,7 @@ async function createPatient(organizationId) {
     telecomPhone: document.getElementById("patientTelecomPhone").value || null,
   };
   const response = await apiRequest("POST", `patients`, patientRecord);
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 async function updatePatient(id) {
@@ -871,11 +838,11 @@ async function updatePatient(id) {
       `patients/${id}/global_add_organization?organizationId=${document.getElementById("addOrganizationId").value}`
     );
   }
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 async function deletePatient(id) {
-  if (await apiRequest("DELETE", `patients/${id}?organizationId=${document.getElementById('organizationForPatients')?.value}`)) navReturnFromCrud();
+  if (await apiRequest("DELETE", `patients/${id}?organizationId=${document.getElementById('organizationForPatients')?.value}`)) await navReturnFromCrud() ;
 }
 
 async function getInvitationLink(id, sendEmail) {
@@ -1042,7 +1009,7 @@ async function createStudy() {
     iconUrl: document.getElementById("studyIconUrl").value || null,
   };
   const response = await apiRequest("POST", `studies`, studyRecord);
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 async function updateStudy(id) {
@@ -1052,7 +1019,7 @@ async function updateStudy(id) {
     iconUrl: document.getElementById("studyIconUrl").value || null,
   };
   const response = await apiRequest("PATCH", `studies/${id}`, studyRecord);
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 function getSelectedRecordIds(selector) {
@@ -1152,7 +1119,7 @@ async function removeDataSourceFromStudy(dataSourceId, studyId) {
 
 async function deleteStudy(id) {
   response = await apiRequest("DELETE", `studies/${id}`);
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 }
 
 // ==================================================
@@ -1347,7 +1314,7 @@ async function createDataSource() {
     type: document.getElementById("dataSourceType").value,
   };
   if (await apiRequest("POST", `data_sources`, dataSourceRecord))
-    navReturnFromCrud();
+    await navReturnFromCrud() ;
 }
 
 async function updateDataSource(id) {
@@ -1356,12 +1323,12 @@ async function updateDataSource(id) {
     type: document.getElementById("dataSourceType").value || null,
   };
   const response = await apiRequest("PATCH", `data_sources/${id}`, studyRecord);
-  if (response.ok) navReturnFromCrud();
+  if (response.ok) await navReturnFromCrud() ;
 
 }
 
 async function deleteDataSource(id) {
-  if (await apiRequest("DELETE", `data_sources/${id}`)) navReturnFromCrud();
+  if (await apiRequest("DELETE", `data_sources/${id}`)) await navReturnFromCrud() ;
 }
 
 async function addScopeToDataSource(scopeCodeId, dataSourceId) {
