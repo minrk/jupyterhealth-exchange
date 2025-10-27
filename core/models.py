@@ -9,10 +9,10 @@ import humps
 from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
-from django.core.exceptions import ObjectDoesNotExist
-from django.core.exceptions import PermissionDenied, BadRequest
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, BadRequest
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import EmailMessage
-from django.db import models, connection
+from django.db import models, connection, transaction
 from django.db.models import Q
 from django.db.utils import IntegrityError
 from django.shortcuts import get_object_or_404
@@ -25,7 +25,9 @@ from fhir.resources.observation import Observation as FHIRObservation
 from fhir.resources.patient import Patient as FHIRPatient
 from jsonschema import ValidationError
 from core.utils import validate_with_registry
-from oauth2_provider.models import get_grant_model
+from oauth2_provider.models import (
+    AccessToken, RefreshToken, Grant, IDToken, get_application_model, get_grant_model
+)
 
 from .tokens import account_activation_token
 
@@ -89,22 +91,36 @@ class JheUser(AbstractUser):
             return super().has_module_perms(app_label)
         return False
 
+    @transaction.atomic
     def delete(self, *args, **kwargs):
         """
-        To bypass the below exception as core_jheuser_groups Django built-in model has been removed.
+        Not using built-in delete() because we've removed default Django user groups table from DB
 
-        django.db.utils.ProgrammingError: relation "core_jheuser_groups" does not exist
-        LINE 1: DELETE FROM "core_jheuser_groups" WHERE "core_jheuser_groups...
+        Custom delete:
+        - Avoids hitting removed auth M2M tables.
+        - Proactively deletes Django OAuth Toolkit artifacts that FK to this user.
+        - Finally, raw-DELETE the user row.
         """
+        # 1) Remove Django OAuth Toolkit artifacts referencing this user
+        # (Order chosen to avoid FK surprises across Django OAuth Toolkit versions)
+        IDToken.objects.filter(user=self).delete()
+        Grant.objects.filter(user=self).delete()
+        RefreshToken.objects.filter(user=self).delete()  # often FK→AccessToken and FK→User
+        AccessToken.objects.filter(user=self).delete()
+
+        # If you allow users to own OAuth applications, also remove those:
+        Application = get_application_model()
+        Application.objects.filter(user=self).delete()
+
+        # 2) Now delete the user row itself (bypasses Django's M2M cleanup)
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM core_jheuser WHERE id = %s", [self.id])
             deleted = cursor.rowcount
 
         if deleted:
             return deleted
-        else:
-            raise ObjectDoesNotExist(f"JheUser with id={self.id} did not exist")
-
+        raise ObjectDoesNotExist(f"JheUser with id={self.id} did not exist")
+    
     def save(self, *args, **kwargs):
         is_new = (
             self._state.adding
@@ -114,7 +130,7 @@ class JheUser(AbstractUser):
 
         if is_new and self.user_type:
             if self.user_type == "patient" and not hasattr(self, "patient_profile"):
-                print("Creating patient profile in save method")
+                print("JheUser save patient profile")
                 Patient.objects.create(
                     jhe_user=self,
                     name_family=self.last_name or "",
@@ -123,13 +139,78 @@ class JheUser(AbstractUser):
                     identifier=self.identifier,
                 )
             elif self.user_type == "practitioner" and not hasattr(self, "practitioner_profile"):
-                print("Creating practitioner profile in save method")
-                Practitioner.objects.create(
-                    jhe_user=self,
-                    name_family=self.last_name,
-                    name_given=self.first_name,
-                    identifier=self.identifier,
-                )
+                print("JheUser save practitioner profile")
+                with transaction.atomic():
+                    practitioner = Practitioner.objects.create(
+                        jhe_user=self,
+                        name_family=self.last_name,
+                        name_given=self.first_name,
+                        identifier=self.identifier,
+                    )
+
+                    # --- parse multi-org:role string from env ---
+                    mapping_str = getattr(settings, "PRACTITIONER_DEFAULT_ORGS", "")
+                    mapping_str = (mapping_str or "").strip()
+
+                    if mapping_str:
+                        # Expected format: "<org_id>:<role>;<org_id>:<role>"
+                        parts = [p.strip() for p in mapping_str.split(";") if p.strip()]
+                        if not parts:
+                            raise DjangoValidationError(
+                                "PRACTITIONER_DEFAULT_ORGS must be non-empty when set."
+                            )
+
+                        valid_roles = {c[0] for c in PractitionerOrganization.ROLE_CHOICES}
+                        requested: list[tuple[int, str]] = []
+
+                        for idx, part in enumerate(parts, start=1):
+                            if ":" not in part:
+                                raise DjangoValidationError(
+                                    f"PRACTITIONER_DEFAULT_ORGS entry #{idx} is missing ':'. "
+                                    "Expected '<org_id>:<role>'."
+                                )
+                            org_id_str, role = [s.strip() for s in part.split(":", 1)]
+
+                            if not org_id_str or not org_id_str.isdigit():
+                                raise DjangoValidationError(
+                                    f"PRACTITIONER_DEFAULT_ORGS entry #{idx} has invalid org ID "
+                                    f"'{org_id_str}'. Must be a numeric ID."
+                                )
+                            if not role:
+                                raise DjangoValidationError(
+                                    f"PRACTITIONER_DEFAULT_ORGS entry #{idx} is missing a role."
+                                )
+                            if role not in valid_roles:
+                                raise DjangoValidationError(
+                                    f"PRACTITIONER_DEFAULT_ORGS entry #{idx} has invalid role '{role}'. "
+                                    f"Valid roles: {sorted(valid_roles)}"
+                                )
+
+                            requested.append((int(org_id_str), role))
+
+                        # Ensure all org IDs exist
+                        org_ids = [oid for oid, _ in requested]
+                        orgs = Organization.objects.filter(id__in=org_ids)
+                        found_ids = {o.id for o in orgs}
+                        missing = sorted(set(org_ids) - found_ids)
+                        if missing:
+                            raise DjangoValidationError(
+                                f"PRACTITIONER_DEFAULT_ORGS references missing Organization ID(s): {missing}"
+                            )
+
+                        org_by_id = {o.id: o for o in orgs}
+
+                        # Create/update links idempotently
+                        for org_id, role in requested:
+                            org = org_by_id[org_id]
+                            link, created = PractitionerOrganization.objects.get_or_create(
+                                practitioner=practitioner,
+                                organization=org,
+                                defaults={"role": role},
+                            )
+                            if not created and link.role != role:
+                                link.role = role
+                                link.save(update_fields=["role"])
 
     def send_email_verificaion(self):
         message = render_to_string(

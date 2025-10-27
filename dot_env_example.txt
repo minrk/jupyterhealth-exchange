@@ -10,6 +10,8 @@ OIDC_CLIENT_AUTHORITY_PATH="/o/"
 OIDC_CLIENT_REDIRECT_URI_PATH="/auth/callback"
 OIDC_CLIENT_ID="Ima7rx8D6eko0PzlU1jK28WBUT2ZweZj7mqVG2wm"
 
+# PRACTITIONER_DEFAULT_ORGS="20001:viewer;20002:manager" # "<org id>:<role>;..." role=manager|member|viewer
+
 DB_NAME="jhe_dev"
 DB_USER="jheuser"
 DB_PASSWORD="jhepassword"
