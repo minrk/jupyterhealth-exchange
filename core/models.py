@@ -1289,7 +1289,7 @@ class Observation(models.Model):
                         'content_type',
                         'application/json',
                         'data',
-                        encode(core_observation.value_attachment_data::text::bytea, 'base64')
+                        encode(convert_to(core_observation.value_attachment_data::text, 'UTF-8'), 'base64')
                     )::jsonb as value_attachment
 
             FROM core_observation
