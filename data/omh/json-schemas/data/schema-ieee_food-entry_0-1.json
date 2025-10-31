@@ -4,6 +4,9 @@
     "description": "This schema represents a food entry as a named food and the quantity that was consumed + time",
     "type": "object",
     "definitions": {
+        "unit_value": {
+            "$ref": "unit-value-1.0.json"
+        },
         "mass_unit_value": {
             "$ref": "mass-unit-value-0.1.json"
         },
@@ -32,7 +35,7 @@
                     "$ref": "#/definitions/volume_unit_value"
                 },
                 {
-                    "type": "number"
+                    "$ref": "#/definitions/unit_value"
                 }
             ]
         },
