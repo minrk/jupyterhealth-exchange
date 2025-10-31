@@ -3,7 +3,7 @@ name: Build container image
 on:
   push:
     branches:
-      - main
+      - test
     tags:
       - '*'
     paths-ignore:
@@ -63,7 +63,7 @@ jobs:
               and event == "push"
               and (
                   ref.startswith("refs/tags/")
-                  or ref == "refs/heads/main"
+                  or ref == "refs/heads/test"
               )
           ):
               print(f"Publishing image to {os.environ['REGISTRY']}")
