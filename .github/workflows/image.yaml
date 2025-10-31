@@ -25,7 +25,7 @@ on:
 
 env:
   # only publish from this repo, not forks
-  PUBLISHING_REPO: jupyterhealth/jupyterhealth-exchange
+  PUBLISHING_REPO: minrk/jupyterhealth-exchange
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
