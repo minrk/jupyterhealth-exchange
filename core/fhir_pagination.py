@@ -38,9 +38,13 @@ class FHIRBundlePagination(PageNumberPagination):
         else:
             count_query_with_alias = f"SELECT COUNT(*) AS count_col FROM ({sql}) AS subquery"
 
+        print(f"{sql=}")
+        print(f"{count_query_with_alias=}")
+        print(f"{paginated_sql=}")
         # Execute the count query through the ORM
         count_result = list(models.Manager.raw(count_query_with_alias, params))
         total_count = count_result[0].count_col if count_result else 0
+        print(f"{total_count=}")
 
         # Execute main query through Django's QuerySet.raw()
         # This is a RawQuerySet which doesn't pull all results into memory at once

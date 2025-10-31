@@ -190,8 +190,12 @@ LOGGING = {
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": os.getenv("DJANGO_LOG_LEVEL"),
             "propagate": False,
+        },
+        "django.db.backends": {
+            "level": os.getenv("DJANGO_LOG_LEVEL"),
+            "handlers": ["console"],
         },
     },
 }
