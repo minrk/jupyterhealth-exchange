@@ -53,36 +53,36 @@ def test_patient_practitioner_can_update_own_consents(hr_study):
     assert created.count() == 0
 
 
-def test_patients_pagination(client, organization):
+def test_patients_pagination(api_client, organization):
     n = 25
     existing = Patient.objects.all().count()
     add_patients(n - existing, organization)
-    r = client.get("/api/v1/patients", {"page_size": 10})
+    r = api_client.get("/api/v1/patients", {"page_size": 10})
     assert r.status_code == 200
     response = r.json()
     assert response["count"] == n
     assert len(response["results"]) == 10
     all_patients = response["results"]
     while r.get("next"):
-        r = client.get(r["next"])
+        r = api_client.get(r["next"])
         assert r.status_code == 200
         assert r["results"]
         all_patients.extend(r["results"])
     assert len(all_patients) == n
 
 
-def test_patients_fhir_pagination(client, organization):
+def test_patients_fhir_pagination(api_client, organization):
     n = 25
     existing = Patient.objects.all().count()
     add_patients(n - existing, organization)
-    r = client.get("/api/v1/Patient", {"_count": 10})
+    r = api_client.get("/api/v1/Patient", {"_count": 10})
     assert r.status_code == 200
     response = r.json()
     assert response["total"] == n
     assert len(response["entry"]) == 10
     all_patients = response["results"]
     while r.get("next"):
-        r = client.get(r["next"])
+        r = api_client.get(r["next"])
         assert r.status_code == 200
         assert r["entry"]
         all_patients.extend(r["results"])

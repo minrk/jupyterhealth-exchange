@@ -42,10 +42,10 @@ def device(db):
 
 
 @pytest.fixture
-def client(user):
-    client = APIClient()
-    client.force_authenticate(user)
-    return client
+def api_client(user):
+    api_client = APIClient()
+    api_client.force_authenticate(user)
+    return api_client
 
 
 @pytest.fixture
