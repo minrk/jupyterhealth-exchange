@@ -86,12 +86,15 @@ def add_patients(n, organization=None):
 
     for Class, items in to_create.items():
         Class.objects.bulk_create(items)
-    n_created = n
+    n_created += n
     return to_create[Patient]
 
 
 def add_patient_to_study(patient: Patient, study: Study, consent=True) -> None:
     """Add a patient to a study, including consent for the scopes requested by the study"""
+    existing = StudyPatient.objects.filter(study=study, patient=patient).first()
+    if existing:
+        return
     patient.organizations.add(study.organization)
     study_patient = StudyPatient.objects.create(study=study, patient=patient)
     if consent:

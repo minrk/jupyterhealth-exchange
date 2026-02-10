@@ -9,6 +9,7 @@ from core.models import (
     DataSource,
     JheUser,
     Organization,
+    PractitionerOrganization,
 )
 
 
@@ -32,7 +33,11 @@ def user(organization):
         identifier="test-practitioner",
         user_type="practitioner",
     )
-    user.practitioner.organizations.add(organization)
+    PractitionerOrganization.objects.create(
+        practitioner=user.practitioner,
+        organization=organization,
+        role="manager",
+    )
     return user
 
 

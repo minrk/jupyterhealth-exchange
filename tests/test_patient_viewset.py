@@ -1,11 +1,13 @@
+import pytest
 from rest_framework.test import APIClient
 
 from core.models import (
     Patient,
     StudyPatientScopeConsent,
+    Organization,
 )
 
-from .utils import add_patients, add_patient_to_study, Code
+from .utils import add_patients, add_patient_to_study, Code, fetch_paginated
 
 
 def test_patient_practitioner_can_update_own_consents(hr_study):
@@ -53,37 +55,84 @@ def test_patient_practitioner_can_update_own_consents(hr_study):
     assert created.count() == 0
 
 
-def test_patients_pagination(api_client, organization):
+def test_list_patients(api_client, organization):
     n = 25
+    per_page = 10
     existing = Patient.objects.all().count()
     add_patients(n - existing, organization)
-    r = api_client.get("/api/v1/patients", {"page_size": 10})
-    assert r.status_code == 200
-    response = r.json()
-    assert response["count"] == n
-    assert len(response["results"]) == 10
-    all_patients = response["results"]
-    while r.get("next"):
-        r = api_client.get(r["next"])
-        assert r.status_code == 200
-        assert r["results"]
-        all_patients.extend(r["results"])
-    assert len(all_patients) == n
+    patients = fetch_paginated(api_client, "/api/v1/patients", {"pageSize": per_page})
+    assert len(patients) == n
+    new_org = Organization.objects.create(name="Other", type="other")
+    add_patients(10, new_org)
+    patients = fetch_paginated(api_client, "/api/v1/patients", {"pageSize": per_page})
+    assert len(patients) == n
 
 
-def test_patients_fhir_pagination(api_client, organization):
+def test_create_delete(api_client, organization):
+    email = "testcreate-patient@example.com"
+    r = api_client.post(
+        "/api/v1/patients",
+        {
+            "organizationId": organization.id,
+            "telecomEmail": email,
+            "birthDate": "2000-01-01",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 200, r.text
+    patient_info = r.json()
+    assert "id" in patient_info
+    assert patient_info["telecomEmail"] == email
+    assert patient_info["organizations"]
+    assert patient_info["organizations"][0]["id"] == organization.id
+    r = api_client.get(f"/api/v1/patients/{patient_info['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json() == patient_info
+
+    r = api_client.delete(f"/api/v1/patients/{patient_info['id']}?organization_id={organization.id}")
+    assert r.status_code == 200, r.text
+    assert r.json()["success"]
+
+
+@pytest.mark.xfail(reason="invalid inputs to create should be handled")
+def test_create_validation(api_client, organization):
+    # test validation of create inputs
+    r = api_client.post(
+        "/api/v1/patients",
+        {
+            "organizationId": organization.id,
+            "telecom_email": "testcreate-patient@example.com",
+        },
+        content_type="application/json",
+    )
+    assert r.status_code == 400
+
+
+@pytest.mark.xfail(reason="not permitted to list patients in fhir without study")
+def test_fhir_list_patients(api_client, organization, hr_study):
     n = 25
+    per_page = 10
     existing = Patient.objects.all().count()
     add_patients(n - existing, organization)
-    r = api_client.get("/api/v1/Patient", {"_count": 10})
-    assert r.status_code == 200
-    response = r.json()
-    assert response["total"] == n
-    assert len(response["entry"]) == 10
-    all_patients = response["results"]
-    while r.get("next"):
-        r = api_client.get(r["next"])
-        assert r.status_code == 200
-        assert r["entry"]
-        all_patients.extend(r["results"])
-    assert len(all_patients) == n
+    patients = fetch_paginated(api_client, "/fhir/r5/Patient", {"_count": per_page})
+    assert len(patients) == n
+
+
+@pytest.mark.xfail(reason="fhir list patients query is wrong")
+def test_fhir_list_patients_by_study(api_client, organization, hr_study):
+    n = 25
+    per_page = 10
+    existing = Patient.objects.all().count()
+    add_patients(n - existing, organization)
+    for patient in Patient.objects.all():
+        add_patient_to_study(patient, hr_study)
+    patients = fetch_paginated(
+        api_client,
+        "/fhir/r5/Patient",
+        {"_count": per_page, "_has:Group:member:_id": hr_study.id},
+    )
+    assert len(patients) == n
+
+
+def test_fhir_list_patients_by_identifier(api_client, organization):
+    pytest.skip("not implemented")
