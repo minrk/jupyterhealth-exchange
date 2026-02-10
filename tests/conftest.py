@@ -49,6 +49,7 @@ def device(db):
 @pytest.fixture
 def api_client(user):
     api_client = APIClient()
+    api_client.default_format = "json"
     api_client.force_authenticate(user)
     return api_client
 

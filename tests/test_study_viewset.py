@@ -15,7 +15,6 @@ def test_create_delete(api_client, organization):
     r = api_client.post(
         "/api/v1/studies",
         {"organization": organization.id, "name": name, "description": "some study"},
-        format="json",
     )
     assert r.status_code == 201, r.text
     info = r.json()
@@ -40,7 +39,6 @@ def test_create_invalid(api_client, organization):
     r = api_client.post(
         "/api/v1/studies",
         {"organization": organization.id, "name": 5},
-        format="json",
     )
     assert r.status_code == 400
 
@@ -54,7 +52,7 @@ def test_get_study(api_client, hr_study):
 
 def test_patch_study(api_client, hr_study):
     before = api_client.get(f"/api/v1/studies/{hr_study.id}").json()
-    r = api_client.patch(f"/api/v1/studies/{hr_study.id}", {"description": "updated description"}, format="json")
+    r = api_client.patch(f"/api/v1/studies/{hr_study.id}", {"description": "updated description"})
     assert r.status_code == 200
     study = r.json()
     assert study["description"] == "updated description"
@@ -76,14 +74,14 @@ def test_add_remove_study_patients(api_client, organization, hr_study):
 
     patients = add_patients(5, organization)
     patients_url = f"/api/v1/studies/{hr_study.id}/patients"
-    r = api_client.post(patients_url, {"patient_ids": [patient.id for patient in patients]}, format="json")
+    r = api_client.post(patients_url, {"patient_ids": [patient.id for patient in patients]})
     assert r.status_code == 200
     # TODO: check study_patients response
 
     study_patients = StudyPatient.objects.filter(study=hr_study)
     assert study_patients.count() == 5 + seed_count
 
-    r = api_client.delete(patients_url, {"patient_ids": [patient.id for patient in patients]}, format="json")
+    r = api_client.delete(patients_url, {"patient_ids": [patient.id for patient in patients]})
     assert r.status_code == 200
 
     study_patients = StudyPatient.objects.filter(study=hr_study)
@@ -91,7 +89,7 @@ def test_add_remove_study_patients(api_client, organization, hr_study):
 
     # do it again
     # FIXME: should this raise when there is no match?
-    r = api_client.delete(patients_url, {"patient_ids": [patient.id for patient in patients]}, format="json")
+    r = api_client.delete(patients_url, {"patient_ids": [patient.id for patient in patients]})
 
     study_patients = StudyPatient.objects.filter(study=hr_study)
     assert study_patients.count() == seed_count
@@ -114,7 +112,7 @@ def test_add_remove_scope_requests(api_client, hr_study):
         text="blood pressure",
     )
     url = f"/api/v1/studies/{hr_study.id}/scope_requests"
-    r = api_client.post(url, {"scope_code_id": bp.id}, format="json")
+    r = api_client.post(url, {"scope_code_id": bp.id})
     assert r.status_code == 200, r.text
     r = api_client.get(url)
     assert r.status_code == 200, r.text
@@ -125,7 +123,7 @@ def test_add_remove_scope_requests(api_client, hr_study):
     assert StudyScopeRequest.objects.filter(study=hr_study, scope_code=bp).count() == 1
 
     url = f"/api/v1/studies/{hr_study.id}/scope_requests"
-    r = api_client.delete(url, {"scope_code_id": bp.id}, format="json")
+    r = api_client.delete(url, {"scope_code_id": bp.id})
     assert r.status_code == 200, r.text
     assert StudyScopeRequest.objects.filter(study=hr_study, scope_code=bp).count() == 0
 

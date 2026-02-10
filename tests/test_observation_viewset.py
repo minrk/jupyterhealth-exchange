@@ -110,7 +110,7 @@ def test_observation_upload_bundle(api_client, device, hr_study, patient, get_ob
         "type": "batch",
         "entry": entries,
     }
-    r = api_client.post("/fhir/r5/", data=request_payload, format="json")
+    r = api_client.post("/fhir/r5/", data=request_payload)
     for entry in r.json()["entry"]:
         if "outcome" in entry["response"]:
             for issue in entry["response"]["outcome"]["issue"]:
@@ -153,7 +153,7 @@ def test_observation_upload(api_client, device, hr_study, patient, get_observati
             # "data": record,
         },
     }
-    r = api_client.post("/fhir/r5/Observation", data=resource, format="json")
+    r = api_client.post("/fhir/r5/Observation", data=resource)
     if r.status_code != 201:
         print(r)
     assert r.status_code == 201
