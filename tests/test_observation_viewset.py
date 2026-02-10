@@ -78,7 +78,7 @@ def test_observation_limit(hr_study, patient, api_client, get_observations):
     assert len(all_results) == n
 
 
-def test_observation_upload_bundle(api_client, user, device, hr_study, patient, get_observations):
+def test_observation_upload_bundle(api_client, device, hr_study, patient, get_observations):
     entries = []
     for i in range(10):
         record = generate_observation_value_attachment_data(Code.HeartRate.value)
@@ -131,7 +131,7 @@ def test_observation_upload_bundle(api_client, user, device, hr_study, patient, 
     assert value_attachment_out["body"] == value_attachment_in["body"]
 
 
-def test_observation_upload(api_client, user, device, hr_study, patient, get_observations):
+def test_observation_upload(api_client, device, hr_study, patient, get_observations):
     record = generate_observation_value_attachment_data(Code.HeartRate.value)
 
     resource = {

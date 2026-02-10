@@ -32,7 +32,7 @@ def test_create_delete(api_client, organization):
             "nameGiven": "first",
             # "birthDate": "2000-01-01",
         },
-        content_type="application/json",
+        format="json",
     )
     assert r.status_code == 200, r.text
     info = r.json()
@@ -55,6 +55,6 @@ def test_create_invalid(api_client, organization):
         {
             "organizationId": organization.id,
         },
-        content_type="application/json",
+        format="json",
     )
     assert r.status_code == 400

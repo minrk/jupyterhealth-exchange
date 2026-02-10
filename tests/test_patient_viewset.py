@@ -77,7 +77,7 @@ def test_create_delete(api_client, organization):
             "telecomEmail": email,
             "birthDate": "2000-01-01",
         },
-        content_type="application/json",
+        format="json",
     )
     assert r.status_code == 200, r.text
     patient_info = r.json()
@@ -103,7 +103,7 @@ def test_create_validation(api_client, organization):
             "organizationId": organization.id,
             "telecom_email": "testcreate-patient@example.com",
         },
-        content_type="application/json",
+        format="json",
     )
     assert r.status_code == 400
 
