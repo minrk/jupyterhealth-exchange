@@ -83,6 +83,8 @@ class PaginatedRawQuerySet(RawQuerySet):
     def set_limits(self, start, stop):
         limit_offset = ""
 
+        if not self.params:
+            self.params = {}
         if start is None:
             start = 0
         elif start > 0:
