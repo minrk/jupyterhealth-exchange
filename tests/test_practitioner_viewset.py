@@ -20,8 +20,9 @@ def test_list_practitioners_no_auth(user):
 # fails with:
 # django.db.utils.IntegrityError: null value in column "birth_date" of relation "core_patient" violates not-null constraint
 # but shouldn't create a patient at all
-@pytest.mark.xfail("create practitioner doesn't work")
-def test_create_delete(api_client, organization):
+@pytest.mark.xfail(reason="create practitioner doesn't work")
+def test_create_delete(api_client, superuser, organization):
+    api_client.force_authenticate(superuser)
     email = "testcreate-practitioner@example.com"
     r = api_client.post(
         "/api/v1/practitioners",
