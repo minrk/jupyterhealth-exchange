@@ -64,9 +64,10 @@ jobs:
           source ci/test_env.sh
           pipenv run pytest -vx tests/
 
+      - name: install coverage.py
+        # needed for codecov
+        run: |
+          pip install coverage
+
       - name: upload coverage
         uses: codecov/codecov-action@v5
-        with:
-          # autodetect doesn't work with pipenv isolation
-          files:
-            - .coverage
