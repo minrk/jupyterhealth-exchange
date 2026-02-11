@@ -26,6 +26,14 @@ def organization(db):
 
 
 @pytest.fixture
+def superuser(db):
+    return JheUser.objects.create_superuser(
+        email="superuser@example.org",
+        password="unused",
+    )
+
+
+@pytest.fixture
 def user(organization):
     user = JheUser.objects.create_user(
         email="test-user@example.org",
