@@ -1141,65 +1141,6 @@ AND core_codeableconcept.coding_system LIKE %(coding_system)s AND core_codeablec
             },
         )
 
-    @staticmethod
-    def count_for_practitioner_organization_study_patient(
-        jhe_user_id,
-        organization_id=None,
-        study_id=None,
-        patient_id=None,
-        observation_id=None,
-    ):
-        """Use a dedicated count query for better performance. Aligns with optional inclusion for _total number of
-        matching resources per FHIR spec."""
-
-        # Explicitly cast to ints so no injection vulnerability
-        organization_sql_where = ""
-        if organization_id:
-            organization_sql_where = f"AND core_organization.id={int(organization_id)}"
-
-        study_sql_where = ""
-        if study_id:
-            study_sql_where = f"AND core_study.id={int(study_id)}"
-
-        patient_id_sql_where = ""
-        if patient_id:
-            patient_id_sql_where = f"AND core_patient.id={int(patient_id)}"
-
-        observation_sql_where = ""
-        if observation_id:
-            observation_sql_where = f"AND core_observation.id={int(observation_id)}"
-
-        practitioner = Practitioner.objects.get(jhe_user_id=jhe_user_id)
-        practitioner_id = practitioner.id
-
-        # Use a temporary model for count results
-        class CountResult(models.Model):
-            count = models.IntegerField()
-
-            class Meta:
-                managed = False  # No table creation
-                app_label = "core"
-
-        query = f"""
-        SELECT 1 as id, COUNT(DISTINCT core_observation.id) as count
-        FROM core_observation
-        JOIN core_codeableconcept ON core_codeableconcept.id=core_observation.codeable_concept_id
-        JOIN core_patient ON core_patient.id=core_observation.subject_patient_id
-        JOIN core_patientorganization ON core_patientorganization.patient_id=core_patient.id
-        JOIN core_organization ON core_organization.id=core_patientorganization.organization_id
-        JOIN core_practitionerorganization ON core_practitionerorganization.organization_id=core_organization.id
-        LEFT JOIN core_studypatient ON core_studypatient.patient_id=core_patient.id
-        LEFT JOIN core_study ON core_study.id=core_studypatient.study_id
-        WHERE core_practitionerorganization.practitioner_id=%(practitioner_id)s
-        {organization_sql_where}
-        {study_sql_where}
-        {patient_id_sql_where}
-        {observation_sql_where}
-      """
-
-        results = list(CountResult.objects.raw(query, {"practitioner_id": practitioner_id}))
-        return results[0].count if results else 0
-
     # Get the binary data eg https://www.rapidtables.com/convert/number/string-to-binary.html (delimiter=none)
     # base64 it eg https://cryptii.com/pipes/binary-to-base64
     @staticmethod
