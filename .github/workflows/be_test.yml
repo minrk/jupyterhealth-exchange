@@ -66,3 +66,7 @@ jobs:
 
       - name: upload coverage
         uses: codecov/codecov-action@v5
+        with:
+          # autodetect doesn't work with pipenv isolation
+          files:
+            - .coverage
