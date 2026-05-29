@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - test
     tags:
       - '*'
     paths-ignore:
@@ -57,8 +58,10 @@ jobs:
           fetch-depth: 0
 
       - name: Compute tag
-        id: git-info
+        id: git
         run: |
+          git log -2
+          git tag
           tag="$(git describe --tags --abbrev=0)"
           count="$(git rev-list ${tag}.. --count)"
           echo "tag=$tag" >> $GITHUB_OUTPUT
