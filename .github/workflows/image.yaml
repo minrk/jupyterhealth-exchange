@@ -54,6 +54,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Compute tag
+        id: git-info
+        run: |
+          tag="$(git describe --tags --abbrev=0)"
+          count="$(git rev-list ${tag}.. --count)"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          echo "count=$count" >> $GITHUB_OUTPUT
+
       - name: Should we push this image to a public registry?
         shell: python
         run: |
@@ -103,7 +111,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=sha,prefix=
+            type=sha,prefix=${{ steps.git.tag }}-dev.git.${{ steps.git.count }}.sha
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       # https://github.com/docker/build-push-action
