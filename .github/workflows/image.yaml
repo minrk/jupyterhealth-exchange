@@ -114,7 +114,7 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=sha,prefix=${{ steps.git.tag }}-dev.git.${{ steps.git.count }}.sha
+            type=sha,prefix=${{ steps.git.outputs.tag }}-dev.git.${{ steps.git.outputs.count }}.sha
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       # https://github.com/docker/build-push-action
