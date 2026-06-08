@@ -47,7 +47,7 @@ jobs:
           - image_name: ${{ github.repository }}
             context: .
           - image_name: ${{ github.repository }}-mcp
-            context: mcp
+            context: mcp_server
 
     runs-on: ubuntu-24.04
     permissions:
