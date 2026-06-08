@@ -32,37 +32,13 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build-image:
-    name: build ${{ matrix.image_name }}
-    services:
-      # So that we can test this in PRs/branches
-      local-registry:
-        image: registry:2
-        ports:
-          - 5000:5000
 
-    strategy:
-      matrix:
-        include:
-          - image_name: ${{ github.repository }}
-            context: .
-          - image_name: ${{ github.repository }}-mcp
-            context: mcp_server
-
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-
+  configure:
+    outputs:
+      registry: ${{ steps.config.outputs.registry }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
       - name: Should we push this image to a public registry?
+        id: config
         shell: python
         run: |
           import os
@@ -77,29 +53,48 @@ jobs:
                   or ref == "refs/heads/main"
               )
           ):
-              print(f"Publishing image to {os.environ['REGISTRY']}")
+              registry = os.environ['REGISTRY']
           else:
-              # PR or fork, don't push
-              print("Publishing image to local registry")
-              with open(os.environ["GITHUB_ENV"], "a") as f:
-                  f.write(f"REGISTRY=localhost:5000\n")
+              registry = "localhost:5000"
 
-      - name: build and push
-        uses: docker/github-builder/.github/workflows/build.yml@70ac3fc303efa83d2b94905e6ab78bb83cbdc2ae # v1
-        permissions:
-          contents: read # to fetch the repository content
-          id-token: write # for signing attestation(s) with GitHub OIDC Token
-          packages: write # push to ghcr
-        with:
-          output: image
-          push: true
-          meta-tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=sha,prefix=
-          meta-images: ${{ env.REGISTRY }}/${{ matrix.image_name }}
-        secrets:
-          registry-auths: |
-            - registry: ${{ env.REGISTRY }}
-              username: ${{ github.actor }}
-              password: ${{ secrets.GITHUB_TOKEN }}
+          print(f"Publishing image to {registry}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"registry={registry}\n")
+
+  build-image:
+    name: build ${{ matrix.image_name }}
+    needs:
+      - configure
+    services:
+      # So that we can test this in PRs/branches
+      local-registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
+    strategy:
+      matrix:
+        include:
+          - image_name: ${{ github.repository }}
+            context: .
+          - image_name: ${{ github.repository }}-mcp
+            context: mcp_server
+    uses: docker/github-builder/.github/workflows/build.yml@v1
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    with:
+      output: image
+      push: true
+      meta-tags: |
+        type=ref,event=branch
+        type=ref,event=tag
+        type=sha,prefix=
+      meta-images: ${{ needs.configure.outputs.registry }}/${{ matrix.image_name }}
+    secrets:
+      registry-auths: |
+        - registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
