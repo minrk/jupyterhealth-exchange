@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from fhir.resources.observation import Observation as FHIRObservation
 from jsonschema import ValidationError
 
+from core.fhir.scope import authorize_practitioner_scope, resolve_fhir_user
 from core.utils import code_to_schema, validate_with_registry
 
 from .codeable_concept import CodeableConcept
@@ -23,14 +24,13 @@ logger = logging.getLogger(__name__)
 # Observation per record: https://stackoverflow.com/a/61484800 (author worked at ONC)
 class Observation(models.Model):
     subject_patient = models.ForeignKey("Patient", on_delete=models.CASCADE)
-    # codeable_concept and omh_data are null for non-OMH observations, whose clinical payload
-    # is stored opaquely in aux_fhir_data instead of mapped onto these columns.
+    # The Django Observation model holds OMH observations only (code system
+    # https://w3id.org/openmhealth). Any other FHIR Observation is stored in FhirAuxResource.
     codeable_concept = models.ForeignKey("CodeableConcept", on_delete=models.PROTECT, null=True)
     data_source = models.ForeignKey("DataSource", on_delete=models.SET_NULL, null=True)
     omh_data = models.JSONField(null=True)
     last_updated = models.DateTimeField(auto_now=True)
     ow_key = models.TextField(null=True, blank=True, db_index=True)
-    aux_fhir_data = models.JSONField(null=True)
 
     # https://build.fhir.org/valueset-observation-status.html
     OBSERVATION_STATUSES = {
@@ -56,8 +56,7 @@ class Observation(models.Model):
     @property
     def codeable_concepts(self):
         # An OMH Observation has exactly one CodeableConcept; expose it as a one-element
-        # iterable so the data-mapping engine fans it out into the code.coding array. A
-        # non-OMH Observation has none (its code lives in aux_fhir_data), so yield nothing.
+        # iterable so the data-mapping engine fans it out into the code.coding array.
         return [self.codeable_concept] if self.codeable_concept else []
 
     @staticmethod
@@ -120,38 +119,55 @@ class Observation(models.Model):
     @staticmethod
     def fhir_search(
         jhe_user_id,
+        resource_id=None,
+        organization_id=None,
         study_id=None,
         patient_id=None,
-        patient_identifier_system=None,
-        patient_identifier_value=None,
-        coding_system=None,
-        coding_code=None,
-        observation_id=None,
+        **params,
     ):
-        # Return the observations a practitioner may see via the FHIR API as a queryset of
-        # Observation instances; formatting into FHIR JSON is the serializer's job. An
-        # observation is visible only when its patient shares an organization with the
-        # practitioner. When a study is given, the patient must be enrolled in it AND the
-        # observation's code must be one of that study's requested scopes. Related rows used
-        # by the serializer's data-mapping traversal are selected/prefetched to avoid N+1.
-        practitioner = get_object_or_404(Practitioner, jhe_user_id=jhe_user_id)
+        # Return the Observations visible to the user as a queryset of Observation instances
+        # (the serializer renders them into FHIR JSON). A patient user sees only their own
+        # observations and the organization/study/patient filters are ignored; a practitioner
+        # sees observations whose patient shares one of their organizations -- narrowed by the
+        # explicit organization/study/patient filters (each authorized up front, 403 on
+        # mismatch) and, via **params, by patient identifier and coding system|code. When a
+        # study is given the patient must be enrolled in it AND the observation's code must be
+        # one of that study's requested scopes. resource_id selects a single observation.
+        # Related rows are selected/prefetched to avoid N+1; distinct() collapses the duplicate
+        # rows produced by spanning these many-to-many relationships.
+        coding_system = params.get("coding_system")
+        coding_code = params.get("coding_code")
+        patient_identifier_value = params.get("patient_identifier_value")
 
-        qs = Observation.objects.filter(subject_patient__organizations__practitioners=practitioner)
-        if study_id:
-            qs = qs.filter(
-                subject_patient__studypatient__study_id=study_id,
-                codeable_concept__studyscoperequest__study_id=study_id,
-            )
-        if patient_id:
-            qs = qs.filter(subject_patient_id=patient_id)
+        user = resolve_fhir_user(jhe_user_id)
+        if user.is_patient():
+            qs = Observation.objects.filter(subject_patient__jhe_user_id=jhe_user_id)
+        else:
+            authorize_practitioner_scope(jhe_user_id, organization_id, study_id, patient_id)
+            # Anchor on the practitioner's organization membership; an optional organization_id
+            # narrows that SAME shared organization (kept in one filter() so Django reuses the
+            # join). A study additionally requires the patient be enrolled AND the code be one
+            # of that study's requested scopes (matched against the same study).
+            organization_filters = {"subject_patient__organizations__practitioners__jhe_user_id": jhe_user_id}
+            if organization_id:
+                organization_filters["subject_patient__organizations__id"] = organization_id
+            qs = Observation.objects.filter(**organization_filters)
+            if study_id:
+                qs = qs.filter(
+                    subject_patient__studypatient__study_id=study_id,
+                    codeable_concept__studyscoperequest__study_id=study_id,
+                )
+            if patient_id:
+                qs = qs.filter(subject_patient_id=patient_id)
+
+        if resource_id:
+            qs = qs.filter(id=resource_id)
         if patient_identifier_value:
             qs = qs.filter(subject_patient__identifiers__value=patient_identifier_value)
         if coding_system:
             qs = qs.filter(codeable_concept__coding_system=coding_system)
         if coding_code:
             qs = qs.filter(codeable_concept__coding_code=coding_code)
-        if observation_id:
-            qs = qs.filter(id=observation_id)
 
         return (
             qs.select_related("subject_patient", "codeable_concept")
@@ -164,18 +180,12 @@ class Observation(models.Model):
     # base64 it eg https://cryptii.com/pipes/binary-to-base64
     @staticmethod
     def fhir_create(data, user):
-        # An incoming Observation is handled one of two ways, decided by the config-declared
-        # __criteria for Observation (e.g. an OMH code system):
-        #   * OMH (criteria matches): the value attachment is decoded into the omh_data column,
-        #     the code must be a known, consented scope, and a Device is required -- the
-        #     historical behaviour.
-        #   * non-OMH (criteria fails): the config mapping is bypassed. codeable_concept and
-        #     omh_data stay null, no scope-consent applies, the Device is optional, and the
-        #     whole resource is stored verbatim in aux_fhir_data.
+        # Persist an OMH Observation (code system https://w3id.org/openmhealth) onto the Django
+        # Observation model: the value attachment is decoded into the omh_data column, the code
+        # must be a known, consented scope, and a Device is required. The FHIR view routes
+        # non-OMH (or code-less) Observations to FhirAuxResource instead, so this method always
+        # handles the OMH path.
         import humps
-
-        from core.fhir.config import get_resource_mapping
-        from core.fhir.engine import get_mapping_criteria, matches_criteria, split_resource
 
         camelized = humps.camelize(data)
         try:
@@ -183,11 +193,7 @@ class Observation(models.Model):
         except Exception as e:
             raise (BadRequest(e))  # TBD: move to view
 
-        mapping = get_resource_mapping("Observation")
-        criteria = get_mapping_criteria(mapping)
-        is_omh = criteria is None or matches_criteria(camelized, criteria)
-
-        # Subject -- always required; it is the structural link, set even on the aux path.
+        # Subject -- the structural link to the Patient.
         if (
             not fhir_observation.subject
             or not fhir_observation.subject.reference
@@ -213,28 +219,14 @@ class Observation(models.Model):
         if subject_patient.id != user_patient.id:
             raise PermissionDenied("The Subject Patient does not match the current user.")
 
-        # Device: required for OMH, optional otherwise (resolved if a reference is present).
-        data_source = Observation._resolve_device(fhir_observation, required=is_omh)
+        data_source = Observation._resolve_device(fhir_observation)
 
-        if is_omh:
-            # Reject duplicate identifiers up front so we don't create an orphan observation
-            # before the ObservationIdentifier unique constraint trips.
-            for identifier in fhir_observation.identifier or []:
-                if ObservationIdentifier.objects.filter(system=identifier.system, value=identifier.value).exists():
-                    raise IntegrityError(
-                        f"Identifier already exists: system={identifier.system} value={identifier.value}"
-                    )
-            codeable_concept, omh_data = Observation._omh_payload(fhir_observation, user_patient)
-            # Fields the config does not map onto columns are preserved in aux_fhir_data.
-            _, aux_fhir_data = split_resource(camelized, "Observation", mapping)
-        else:
-            # Non-OMH: bypass the mapping. The clinical payload (code, value, status, ...) is
-            # stored opaquely in aux_fhir_data, minus the server-managed structural fields.
-            codeable_concept = None
-            omh_data = None
-            aux_fhir_data = {
-                key: value for key, value in camelized.items() if key not in ("resourceType", "id", "subject", "meta")
-            }
+        # Reject duplicate identifiers up front so we don't create an orphan observation
+        # before the ObservationIdentifier unique constraint trips.
+        for identifier in fhir_observation.identifier or []:
+            if ObservationIdentifier.objects.filter(system=identifier.system, value=identifier.value).exists():
+                raise IntegrityError(f"Identifier already exists: system={identifier.system} value={identifier.value}")
+        codeable_concept, omh_data = Observation._omh_payload(fhir_observation, user_patient)
 
         observation = Observation.objects.create(
             subject_patient=subject_patient,
@@ -242,12 +234,9 @@ class Observation(models.Model):
             codeable_concept=codeable_concept,
             status=fhir_observation.status,
             omh_data=omh_data,
-            aux_fhir_data=aux_fhir_data or None,
         )
 
-        # Only OMH observations fan their identifiers out to rows; for the aux path the
-        # identifiers travel inside aux_fhir_data.
-        if is_omh and fhir_observation.identifier:
+        if fhir_observation.identifier:
             for identifier in fhir_observation.identifier:
                 ObservationIdentifier.objects.create(
                     observation=observation,
@@ -258,14 +247,10 @@ class Observation(models.Model):
         return observation
 
     @staticmethod
-    def _resolve_device(fhir_observation, required):
+    def _resolve_device(fhir_observation):
         reference = fhir_observation.device.reference if fhir_observation.device else None
         if not reference or not reference.startswith("Device/"):
-            if required:
-                raise BadRequest(
-                    "Device is required and must be a reference to a Data Source ID and start with 'Device/'"
-                )
-            return None
+            raise BadRequest("Device is required and must be a reference to a Data Source ID and start with 'Device/'")
         device_id = reference.split("/")[1]
         try:
             return DataSource.objects.get((Q(type="personal_device") | Q(type="device")), id=device_id)
@@ -320,8 +305,8 @@ class Observation(models.Model):
         self.code = None
 
     def clean(self):
-        # Only OMH observations carry omh_data validated against the OMH schemas; a non-OMH
-        # observation has no omh_data/codeable_concept (its payload is opaque in aux_fhir_data).
+        # Django Observations are OMH; validate omh_data against the OMH schemas. Guard against
+        # partially-populated instances (no omh_data/codeable_concept) defensively.
         if self.omh_data is None or self.codeable_concept is None:
             return
         try:

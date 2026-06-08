@@ -1,11 +1,21 @@
 from django.conf import settings
 from django.db import models
 
+from core.fhir.scope import authorize_practitioner_scope, resolve_fhir_user
+
 from .codeable_concept import CodeableConcept
 
 
 class DataSource(models.Model):
-    DATA_SOURCE_TYPES = {"medical_device": "Medical Device", "personal_device": "Personal Device"}
+    """
+    FHIR Device
+    """
+
+    DATA_SOURCE_TYPES = {
+        "medical_device": "Medical Device",
+        "personal_device": "Personal Device",
+        "patient_app": "Patient App",
+    }
     name = models.CharField(null=True, blank=True)
     type = models.CharField(
         choices=list(DATA_SOURCE_TYPES.items()),
@@ -42,6 +52,42 @@ class DataSource(models.Model):
             )
 
         return data_sources
+
+    @staticmethod
+    def fhir_search(
+        jhe_user_id,
+        resource_id=None,
+        organization_id=None,
+        study_id=None,
+        patient_id=None,
+        **params,
+    ):
+        # Return the Devices (DataSources) visible to the user as a queryset of DataSource
+        # instances (the serializer renders them into FHIR JSON). A patient user sees the
+        # devices used in the studies they are enrolled in and the organization/study/patient
+        # filters are ignored; a practitioner sees the devices linked (via StudyDataSource) to
+        # studies under an organization they belong to -- narrowed to one organization, a
+        # single study, or the studies a given patient is part of (each explicit filter
+        # authorized up front, 403 on mismatch). resource_id selects a single device.
+        # distinct() collapses the duplicate rows produced by spanning these many-to-many
+        # relationships.
+        user = resolve_fhir_user(jhe_user_id)
+        if user.is_patient():
+            qs = DataSource.objects.filter(studydatasource__study__studypatient__patient__jhe_user_id=jhe_user_id)
+        else:
+            authorize_practitioner_scope(jhe_user_id, organization_id, study_id, patient_id)
+            qs = DataSource.objects.filter(studydatasource__study__organization__practitioners__jhe_user_id=jhe_user_id)
+            if organization_id:
+                qs = qs.filter(studydatasource__study__organization_id=organization_id)
+            if study_id:
+                qs = qs.filter(studydatasource__study_id=study_id)
+            if patient_id:
+                qs = qs.filter(studydatasource__study__studypatient__patient_id=patient_id)
+
+        if resource_id:
+            qs = qs.filter(id=resource_id)
+
+        return qs.distinct().order_by("name")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

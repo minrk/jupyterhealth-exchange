@@ -449,7 +449,7 @@ class PatientFhirSearchTests(TestCase):
         PatientOrganization.objects.create(patient=self.patient, organization=self.org)
         PatientIdentifier.objects.create(patient=self.patient, system="http://tcp.org", value="PAT001")
 
-        # fhir_search only returns patients enrolled in some study
+        # Enrolled in a study (used by the study-filter test below).
         self.study = Study.objects.create(name="Test Study", description="", organization=self.org)
         StudyPatient.objects.create(study=self.study, patient=self.patient)
 
@@ -483,8 +483,9 @@ class PatientFhirSearchTests(TestCase):
         results = list(Patient.fhir_search(self.practitioner_user.id, patient_identifier_value="NOMATCH"))
         self.assertEqual(results, [])
 
-    def test_fhir_search_excludes_unenrolled_patient(self):
-        # A patient in the same org but not in any study must not appear
+    def test_fhir_search_includes_unenrolled_org_patient(self):
+        # A practitioner sees every patient sharing one of their organizations, whether or not
+        # the patient is enrolled in a study -- organization membership is the access boundary.
         unenrolled_user = JheUser.objects.create_user(email="bob@example.com", password="password")
         unenrolled = Patient.objects.create(
             jhe_user=unenrolled_user,
@@ -497,7 +498,7 @@ class PatientFhirSearchTests(TestCase):
 
         results = list(Patient.fhir_search(self.practitioner_user.id))
         result_ids = [r.id for r in results]
-        self.assertNotIn(unenrolled.id, result_ids)
+        self.assertIn(unenrolled.id, result_ids)
 
     def test_fhir_search_excludes_unauthorized_practitioner(self):
         other_user = JheUser.objects.create_user(
@@ -586,41 +587,6 @@ class FHIRPatientSerializerTests(TestCase):
         self.assertNotIn("phone", systems)
         self.assertIn("email", systems)
 
-    def test_aux_fhir_data_is_merged(self):
-        self.patient.aux_fhir_data = {
-            "gender": "male",
-            "maritalStatus": {
-                "coding": [
-                    {
-                        "system": "http://terminology.hl7.org/CodeSystem/v3-MaritalStatus",
-                        "code": "M",
-                        "display": "Married",
-                    }
-                ],
-                "text": "Married",
-            },
-        }
-        self.patient.save()
-        as_dict = self._render()
-        self.assertEqual(as_dict["gender"], "male")
-        self.assertEqual(as_dict["maritalStatus"]["text"], "Married")
-        # Django-mapped fields are still present alongside aux_fhir_data
-        self.assertEqual(as_dict["name"], [{"family": "Smith", "given": ["Alice"]}])
-
-    def test_django_fields_take_precedence_over_aux_fhir_data(self):
-        # aux_fhir_data attempts to set name/birthDate; the config-mapped Django values win
-        self.patient.aux_fhir_data = {
-            "name": [{"family": "WRONG", "given": ["WRONG"]}],
-            "birthDate": "1900-01-01",
-            "gender": "female",
-        }
-        self.patient.save()
-        as_dict = self._render()
-        self.assertEqual(as_dict["name"], [{"family": "Smith", "given": ["Alice"]}])
-        self.assertEqual(str(as_dict["birthDate"]), "1985-05-05")
-        # a field only present in aux_fhir_data is retained
-        self.assertEqual(as_dict["gender"], "female")
-
 
 # -----------------------------------------------------
 # Observation.fhir_search (ORM query behaviour)
@@ -688,7 +654,7 @@ class ObservationFhirSearchTests(TestCase):
             status="final",
             omh_data=generate_observation_value_attachment_data(self.bp_code.coding_code),
         )
-        results = list(Observation.fhir_search(self.practitioner_user.id, observation_id=self.observation.id))
+        results = list(Observation.fhir_search(self.practitioner_user.id, resource_id=self.observation.id))
         result_ids = [o.id for o in results]
         self.assertIn(self.observation.id, result_ids)
         self.assertNotIn(other.id, result_ids)
@@ -792,24 +758,6 @@ class FHIRObservationSerializerTests(TestCase):
     def test_identifier_absent_when_none(self):
         as_dict = self._render()
         self.assertNotIn("identifier", as_dict)
-
-    def test_aux_fhir_data_is_merged(self):
-        self.observation.aux_fhir_data = {"note": [{"text": "Patient was resting"}]}
-        self.observation.save()
-        as_dict = self._render()
-        self.assertEqual(as_dict["note"], [{"text": "Patient was resting"}])
-        # config-mapped fields are still present alongside aux_fhir_data
-        self.assertEqual(as_dict["status"], "final")
-        self.assertEqual(as_dict["subject"]["reference"], f"Patient/{self.patient.id}")
-
-    def test_aux_fhir_data_does_not_override_mapped_fields(self):
-        # aux_fhir_data tries to change status; the config literal ('final') wins
-        self.observation.aux_fhir_data = {"status": "amended", "note": [{"text": "x"}]}
-        self.observation.save()
-        as_dict = self._render()
-        self.assertEqual(as_dict["status"], "final")
-        # a field only present in aux_fhir_data is retained
-        self.assertEqual(as_dict["note"], [{"text": "x"}])
 
 
 # -----------------------------------------------------

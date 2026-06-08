@@ -3,12 +3,11 @@ from urllib.parse import urlparse
 from django.conf import settings
 from django.db import models
 from django.db.utils import IntegrityError
-from django.shortcuts import get_object_or_404
 
+from core.fhir.scope import authorize_practitioner_scope, resolve_fhir_user
 from core.services.jhe_settings import get_setting
 
 from .codeable_concept import CodeableConcept
-from .practitioner import Practitioner
 
 
 class Patient(models.Model):
@@ -23,7 +22,6 @@ class Patient(models.Model):
     name_given = models.CharField(null=True)
     birth_date = models.DateField(null=True)
     telecom_phone = models.CharField(null=True)
-    aux_fhir_data = models.JSONField(null=True)
     last_updated = models.DateTimeField(auto_now=True)
     organizations = models.ManyToManyField("Organization", through="PatientOrganization", related_name="patients")
 
@@ -121,91 +119,37 @@ class Patient(models.Model):
     def from_jhe_user_id(jhe_user_id):
         return Patient.objects.get(jhe_user_id=jhe_user_id)
 
-    # GET /Patient?_has:Group:member:_id=<group-id>
     @staticmethod
     def fhir_search(
         jhe_user_id,
+        resource_id=None,
+        organization_id=None,
         study_id=None,
-        patient_identifier_system=None,
-        patient_identifier_value=None,
+        patient_id=None,
+        **params,
     ):
-        # Return the patients a practitioner may see via the FHIR API as a queryset of
-        # Patient instances; formatting into FHIR JSON is the serializer's job. A patient
-        # qualifies only when enrolled in some study (studypatient) AND sharing an
-        # organization with the practitioner. jhe_user is selected and identifiers are
-        # prefetched so the serializer's data-mapping traversal does not issue N+1 queries.
-        practitioner = get_object_or_404(Practitioner, jhe_user_id=jhe_user_id)
+        # Return the Patients visible to the user as a queryset of Patient instances (the
+        # serializer renders them into FHIR JSON). A patient user sees only themselves and the
+        # organization/study/patient filters are ignored; a practitioner sees patients who
+        # share one of their organizations -- narrowed by the explicit organization/study/
+        # patient filters (each authorized up front, 403 on mismatch) and, via **params, by
+        # identifier. resource_id selects a single patient. jhe_user is selected and
+        # identifiers prefetched so the serializer's traversal does not issue N+1 queries.
+        patient_identifier_value = params.get("patient_identifier_value")
 
-        qs = Patient.objects.filter(
-            organizations__practitioners=practitioner,
-            studypatient__isnull=False,
-        )
-        if study_id:
-            qs = qs.filter(studypatient__study_id=study_id)
-        if patient_identifier_value:
-            qs = qs.filter(identifiers__value=patient_identifier_value)
+        user = resolve_fhir_user(jhe_user_id)
+        if user.is_patient():
+            qs = Patient.objects.filter(jhe_user_id=jhe_user_id)
+        else:
+            authorize_practitioner_scope(jhe_user_id, organization_id, study_id, patient_id)
+            qs = Patient.for_practitioner_organization_study(
+                jhe_user_id, organization_id, study_id, patient_id, patient_identifier_value
+            )
+
+        if resource_id:
+            qs = qs.filter(id=resource_id)
 
         return qs.select_related("jhe_user").prefetch_related("identifiers").distinct().order_by("name_family")
-
-    @staticmethod
-    def fhir_create(data, user):
-        # Create a Patient from a FHIR resource. The config-mapped fields (name, birthDate)
-        # are reverse-mapped onto columns by the engine; everything the config does not claim
-        # is preserved in aux_fhir_data (the inverse of the read path). Telecom and identifiers
-        # are handled here because they cannot be inverted declaratively: the email drives the
-        # linked JheUser (mirroring the admin create path) and identifiers fan out to rows.
-        import humps
-        from django.core.exceptions import BadRequest, PermissionDenied
-        from django.utils.crypto import get_random_string
-        from fhir.resources.patient import Patient as FHIRPatient
-
-        from core.fhir.config import get_resource_mapping
-        from core.fhir.engine import split_resource
-
-        from .jhe_user import JheUser
-
-        if not user.is_practitioner():
-            raise PermissionDenied("Only practitioners may create Patients via FHIR.")
-
-        camelized = humps.camelize(data)
-        try:
-            FHIRPatient.parse_obj(camelized)
-        except Exception as e:
-            raise BadRequest(e)
-
-        columns, aux_fhir_data = split_resource(camelized, "Patient", get_resource_mapping("Patient"))
-
-        # Telecom is a multi-template list the engine cannot invert; pull phone/email out here.
-        email = None
-        for contact in camelized.get("telecom", []) or []:
-            if contact.get("value") and contact.get("system") == "email":
-                email = contact["value"]
-            elif contact.get("value") and contact.get("system") == "phone":
-                columns["telecom_phone"] = contact["value"]
-
-        jhe_user = None
-        if email:
-            jhe_user = JheUser.objects.filter(email=email).first()
-            if jhe_user is None:
-                jhe_user = JheUser(email=email)
-                jhe_user.set_password(get_random_string(length=16))
-                jhe_user.save()
-
-        editable = {f.name for f in Patient._meta.concrete_fields if f.editable and not f.primary_key}
-        field_values = {name: value for name, value in columns.items() if name in editable}
-
-        patient = Patient(jhe_user=jhe_user, aux_fhir_data=aux_fhir_data or None, **field_values)
-        if organization_id := user.practitioner_profile.get_setting("current_organization_id"):
-            patient._organization_id = organization_id
-        patient.save()
-
-        for identifier in camelized.get("identifier", []) or []:
-            system = identifier.get("system")
-            value = identifier.get("value")
-            if system and value:
-                PatientIdentifier.objects.create(patient=patient, system=system, value=value)
-
-        return patient
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
